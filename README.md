@@ -1,4 +1,4 @@
-# Ignis
+# 🔥IGNIS
 
 #### Predicting Wildfires using AI
 
