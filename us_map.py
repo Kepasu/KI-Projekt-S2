@@ -10,11 +10,8 @@ import earthpy as et
 import geodatasets
 from searchdata import checkForFire
 
-#Shit that Emily added
-# Trying to add the city coordinates and fire coordnates into this visualisation code
-
 #weather_df = pd.read_csv('/Users/emilychristians/desktop/data/weather/city_info.csv')
-fire_df = pd.read_csv('data/modis_2021_United_States.csv')
+fire_df = pd.read_csv('/Users/emilychristians/desktop/ki_projekt/data/modis_2021_United_States.csv')
 
 # Adjust plot font sizes
 sns.set(font_scale=1.5)
@@ -26,30 +23,13 @@ os.chdir(os.path.join(et.io.HOME, 'earth-analytics'))
 
 # Import world boundary shapefile
 worldBound_path = os.path.join("data", "spatial-vector-lidar", "global", 
-                               "ne_110m_land", "ne_110m_land.shp")
+                               "ne_110m_land", "ne_110m_land.shp", "/Users/emilychristians/desktop/ki_projekt/data/cb_2014_us_state_500k/cb_2014_us_state_500k.shp")
 worldBound = gpd.read_file(worldBound_path)
-
-# Plot worldBound data using geopandas
-fig, ax = plt.subplots(figsize=(10, 5))
-worldBound.plot(color='darkgrey', 
-                ax=ax)
-# Set the x and y axis labels
-ax.set(xlabel="Longitude (Degrees)",
-       ylabel="Latitude (Degrees)",
-       title="Global Map - Geographic Coordinate System - WGS84 Datum\n Units: Degrees - Latitude / Longitude")
-
-# Add the x y graticules
-ax.set_axisbelow(True)
-ax.yaxis.grid(color='gray', 
-              linestyle='dashed')
-ax.xaxis.grid(color='gray', 
-              linestyle='dashed')
 
 # Create numpy array of x,y point locations
 #longitude then latitude 
 add_points = np.array([[-105.2519,   40.0274], 
-                       [  10.75  ,   59.95  ], 
-                       [  28.034 ,  -26.1952]])
+                       [ -80.2102,   25.7839]])
 
 # Turn points into list of x,y shapely points 
 city_locations = [Point(xy) for xy in add_points]
@@ -62,15 +42,15 @@ city_locations = gpd.GeoDataFrame(city_locations,
 city_locations.head(3)
 
 # Plot point locations
-fig, ax = plt.subplots(figsize=(12, 8))
+fig, ax = plt.subplots(figsize=(10, 7))
 
 worldBound.plot(figsize=(10, 5), color='k',
                ax=ax)
 # Add city locations
 city_locations.plot(ax=ax, 
-                    color='springgreen', 
-                    marker='*',
-                    markersize=45)
+                    color='red', # was originally springgreen
+                    marker='.',
+                    markersize=70)
 
 # Setup x y axes with labels and add graticules
 ax.set(xlabel="Longitude (Degrees)", ylabel="Latitude (Degrees)",
@@ -79,40 +59,31 @@ ax.set_axisbelow(True)
 ax.yaxis.grid(color='gray', linestyle='dashed')
 ax.xaxis.grid(color='gray', linestyle='dashed')
 
-# Import graticule & world bounding box shapefile data
-graticule_path = os.path.join("data", "spatial-vector-lidar", "global", 
-                              "ne_110m_graticules_all", "ne_110m_graticules_15.shp")
-graticule = gpd.read_file(graticule_path)
+# Zooming into Main Land USA
+x1, x2, y1, y2 = -126, -65, 23, 50
+ax.set_xlim(x1, x2)
+ax.set_ylim(y1, y2)
 
-bbox_path = os.path.join("data", "spatial-vector-lidar", "global", 
-                         "ne_110m_graticules_all", "ne_110m_wgs84_bounding_box.shp")
-bbox = gpd.read_file(bbox_path)
-
-# Create map axis object
-fig, ax = plt.subplots(1, 1, figsize=(15, 8))
-
-# Add bounding box and graticule layers
-bbox.plot(ax=ax, alpha=.1, color='grey')
-graticule.plot(ax=ax, color='lightgrey')
-worldBound.plot(ax=ax, color='black')
+ax.indicate_inset_zoom(ax, edgecolor="black")
 
 def onclick(event):
     print('%s click: button=%d, xdata=%f, ydata=%f' %
           ('double' if event.dblclick else 'single', event.button,
             event.xdata, event.ydata))
     checkForFire(event.ydata, event.xdata, '2023-05-25', fire_df)
+    print(checkForFire)
+
+#display results on the map/ next to it. noes not work yet 
+#plt.text(-120, 56, return onclick, fontsize = 22, 
+#    bbox = dict(facecolor = 'moccasin', alpha = 0.5))
+#plt.plot(c = 'g')
 
 
 cid = fig.canvas.mpl_connect('button_press_event', onclick)
 
-# Add points to plot 
-city_locations.plot(ax=ax, 
-                    markersize=60, 
-                    color='springgreen',
-                    marker='*')
 # Add title and axes labels
 ax.set(title="World Map - Geographic Coordinate Reference System (long/lat degrees)",
-       xlabel="X Coordinates (meters)",
-       ylabel="Y Coordinates (meters)");
+       xlabel="X Coordinates (latitude)",
+       ylabel="Y Coordinates (longitude)");
 
 plt.show()
