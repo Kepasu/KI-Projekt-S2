@@ -1,11 +1,11 @@
-# 🔥IGNIS
+# 🔥 IGNIS
 
-## Predicting Wildfires using AI
+# Predicting Wildfires using AI
 
 With the development of our climate, the threat of wildfires grows by the day. For our group project in our CS course we decided fight this issue by building a program that can predict upcoming wildfires. 
 It utilizes advanced machine learning to make predictions based on decades of fire and weather data.
 
-## Our Data
+# Our Data
 
 To train our machine learning algorithm we decided to use the following datasets:
 
