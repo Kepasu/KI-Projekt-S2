@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import os
+import pickle
 
 
 def haversine(lat1, lon1, lat2, lon2):
@@ -73,7 +74,7 @@ def city_dataframes(start_year, end_year):
 
     for index, row in info_df.iterrows():
 
-        city_id = row['ID
+        city_id = row['ID']
         city_df = read_city_df(city_id, start_year, end_year)
 
         # filter_df_years(city_df, start_year, end_year)
@@ -82,11 +83,16 @@ def city_dataframes(start_year, end_year):
         df = check_for_fire(row['Lat'], row['Lon'],
                             new_fire_df, city_df)
 
-        city_dfs.setdefault(city_id, df)
-        city_dfs[city_id] = df
+        city_dfs.setdefault(city_id, [])
+        city_dfs[city_id].append(df)
+        city_dfs[city_id].append(row['Lat'])
+        city_dfs[city_id].append(row['Lon'])
 
     return city_dfs
 
 
-city_dataframes(2018, 2020)
+city_dfs = city_dataframes(2018, 2020)
 # np.save("city_dict", city_dfs)
+print(city_dfs.values())
+with open('city_dict.pkl', 'wb') as f:
+    pickle.dump(city_dfs, f)
