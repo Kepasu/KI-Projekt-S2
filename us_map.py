@@ -13,6 +13,13 @@ import arrow
 
 #weather_df = pd.read_csv('/Users/emilychristians/desktop/data/weather/city_info.csv')
 fire_df = pd.read_csv('/Users/emilychristians/desktop/ki_projekt/data/modis_2021_United_States.csv')
+#weather_df = pd.read_csv('/Users/emilychristians/desktop/ki_projekt/data/weather/city_info.csv')
+
+# Set the path to the 'city_info.csv' file
+city_info_path = '/Users/emilychristians/desktop/ki_projekt/data/weather/city_info.csv'
+
+# Read the 'city_info.csv' file into a pandas DataFrame
+city_info_df = pd.read_csv(city_info_path)
 
 # Adjust plot font sizes
 sns.set(font_scale=1.5)
@@ -29,24 +36,22 @@ worldBound = gpd.read_file(worldBound_path)
 
 # Create numpy array of x,y point locations
 #longitude then latitude 
-add_points = np.array([[-105.2519,   40.0274], 
-                       [ -80.2102,   25.7839]])
+#add_points = np.array([[-105.2519,   40.0274], 
+#                      [ -80.2102,   25.7839]])
 
-# Turn points into list of x,y shapely points 
-city_locations = [Point(xy) for xy in add_points]
-city_locations
-
-# Create geodataframe using the points
-city_locations = gpd.GeoDataFrame(city_locations, 
-                                  columns=['geometry'],
-                                  crs=worldBound.crs)
-city_locations.head(3)
+# Create a GeoDataFrame from the city_info_df DataFrame
+geometry = [Point(xy) for xy in zip(city_info_df['Lon'], city_info_df['Lat'])]
+city_locations = gpd.GeoDataFrame(city_info_df, geometry=geometry)
 
 # Plot point locations
 fig, ax = plt.subplots(figsize=(10, 7))
 
 worldBound.plot(figsize=(10, 5), color='k',
                ax=ax)
+
+# Add city locations
+city_locations.plot(ax=ax, color='red', marker='o', markersize=50)
+
 # Add city locations
 city_locations.plot(ax=ax, 
                     color='red', # was originally springgreen
@@ -110,7 +115,7 @@ def onclick(event):
 x = np.arange(-120, 65, 0.05)
 
 #Adding text inside a rectangular box by using the keyword 'bbox'
-plt.text(-120, 56, , fontsize = 10,
+plt.text(-120, 56, "Feuer" , fontsize = 10,
 		bbox = dict(facecolor = 'red', alpha = 0.5))
 
 plt.plot(x, c = 'g')
