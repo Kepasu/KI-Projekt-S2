@@ -36,8 +36,10 @@ def filter_fire_df(lat, lon, fire_df):
 def check_for_fire(lat, lon, fire_df, weather_df):
     # only keep rows close to given date, keep only relevant columns
     # and convert 'acq_date' to datetime format
-    fire_df['acq_date'] = pd.to_datetime(fire_df['acq_date']).dt.normalize()
-    weather_df['Date'] = pd.to_datetime(weather_df['Date']).dt.normalize()
+
+    fire_df['acq_date'] = pd.to_datetime(fire_df.loc[:, 'acq_date'], errors='coerce')
+    fire_df.loc[:, 'acq_date'] = fire_df.loc[:, 'acq_date'].dt.normalize()
+    weather_df.loc[:, 'Date'] = pd.to_datetime(weather_df.loc[:, 'Date'], format='%Y-%m-%d', errors='coerce').dt.normalize()
 
     fire_df = fire_df.loc[:, ['latitude', 'longitude', 'acq_date']]
 
@@ -91,8 +93,8 @@ def city_dataframes(start_year, end_year):
     return city_dfs
 
 
-city_dfs = city_dataframes(2018, 2020)
+city_dfs = city_dataframes(2021, 2021)
 # np.save("city_dict", city_dfs)
-print(city_dfs.values())
-with open('city_dict.pkl', 'wb') as f:
+# print(city_dfs.values())
+with open('city_dict_21.pkl', 'wb') as f:
     pickle.dump(city_dfs, f)
