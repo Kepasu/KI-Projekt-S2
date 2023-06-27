@@ -1,27 +1,32 @@
-import pandas as pd
+import argparse
 import numpy as np
+import pandas as pd
+import pickle
 import torch
 import torch.nn as nn
-from torch.nn import TransformerEncoder, TransformerEncoderLayer
 import torch.optim as optim
 import pytorch_lightning as pl
-from torch.utils.data import DataLoader, Dataset
-import pickle
-import argparse
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-# from fire_check import city_dataframes
+from torch.nn import TransformerEncoder, TransformerEncoderLayer
+from torch.utils.data import DataLoader, Dataset
 
+# -----------------------------------------------------------------------------
+# Dataset
+# -----------------------------------------------------------------------------
 
 class FireDataset(Dataset):
     def __init__(self, data):
-        self.data = data
+        self.data = self.replace_nan_with_median(data)
+
+    def replace_nan_with_median(self, data):
+        for city_id, city_data in data:
+            city_data[0][['tmax', 'tmin', 'prcp']] = city_data[0][['tmax', 'tmin', 'prcp']].apply(lambda x: x.fillna(x.median()), axis=0)
+        return data
 
     def __len__(self):
         return sum([len(city_data[1][0]) for city_data in self.data])
 
     def __getitem__(self, idx):
-
         for city_id, city_data in self.data:
             if idx < len(city_data[0]):
                 features = city_data[0].iloc[idx][['tmax', 'tmin', 'prcp']].values.astype(np.float32)
@@ -30,6 +35,9 @@ class FireDataset(Dataset):
             idx -= len(city_data[0])
         raise IndexError("Index out of range")
 
+# -----------------------------------------------------------------------------
+# Model
+# -----------------------------------------------------------------------------
 
 def positional_encoding(max_seq_length, model_dim):
     position = np.arange(max_seq_length)[:, np.newaxis]
@@ -40,7 +48,6 @@ def positional_encoding(max_seq_length, model_dim):
     return torch.tensor(pos_enc, dtype=torch.float32)
 
 class CosineWarmupScheduler(optim.lr_scheduler._LRScheduler):
-
     def __init__(self, optimizer, warmup, max_iters):
         self.warmup = warmup
         self.max_num_iters = max_iters
@@ -55,8 +62,6 @@ class CosineWarmupScheduler(optim.lr_scheduler._LRScheduler):
         if epoch <= self.warmup:
             lr_factor *= epoch * 1.0 / self.warmup
         return lr_factor
-
-
 
 class TransformerPredictor(pl.LightningModule):
     def __init__(self, input_dim, model_dim, num_classes, num_heads, num_layers,
@@ -105,7 +110,7 @@ class TransformerPredictor(pl.LightningModule):
         x = self.transformer(x)
         x = self.output_linear(x)
         return x
-    
+
     def training_step(self, batch, batch_idx):
         x, y = batch
         y_hat = self.forward(x)
@@ -115,16 +120,6 @@ class TransformerPredictor(pl.LightningModule):
         loss = nn.BCEWithLogitsLoss()(y_hat, y)
         self.log('train_loss', loss)
         return loss
-
-
-    def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
-
-        lr_scheduler = CosineWarmupScheduler(optimizer,
-                                             warmup=self.hparams.warmup,
-                                             max_iters=self.hparams.max_iters)
-        return [optimizer], [{'scheduler': lr_scheduler, 'interval': 'step'}]
-
 
     def validation_step(self, batch, batch_idx):
         x, y = batch
@@ -149,7 +144,6 @@ class TransformerPredictor(pl.LightningModule):
     def val_dataloader(self):
         return DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=8)
 
-
     def test_step(self, batch, batch_idx):
         x, y = batch
         y_hat = self.forward(x)
@@ -160,7 +154,6 @@ class TransformerPredictor(pl.LightningModule):
         self.test_loss.append(loss)
         return {'test_loss': loss}
 
-
     def on_test_epoch_start(self):
         self.test_loss = []
 
@@ -168,52 +161,88 @@ class TransformerPredictor(pl.LightningModule):
         avg_loss = torch.stack(self.test_loss).mean()
         self.log('test_loss', avg_loss, prog_bar=True)
 
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
 
-if __name__ == '__main__':
-    with open('city_dict_19_20.pkl', 'rb') as f:
-        city_dict = pickle.load(f)
+        lr_scheduler = CosineWarmupScheduler(optimizer,
+                                             warmup=self.hparams.warmup,
+                                             max_iters=self.hparams.max_iters)
+        return [optimizer], [{'scheduler': lr_scheduler, 'interval': 'step'}]
 
-    with open('city_dict_21.pkl', 'rb') as f:
-        test_dict = pickle.load(f)
+# -----------------------------------------------------------------------------
+# Main
+# -----------------------------------------------------------------------------
 
-    def fill_nan(dict):
-        for city_id, city_data in dict.items():
-            city_data[0].fillna(city_data[0].mean(), inplace=True)
-        return city_dict
 
-    city_dict = fill_nan(city_dict)
-    test_dict = fill_nan(test_dict)
+def main(args):
+    # Load and preprocess data
+    with open(args.train_data_path, 'rb') as f:
+        train_data = pickle.load(f)
 
-    city_list = [(city_id, city_data) for city_id, city_data in city_dict.items()]
-    test_list = [(city_id, city_data) for city_id, city_data in test_dict.items()]
-    train_data = city_list
-    val_data, test_data = train_test_split(test_list, test_size=0.5, random_state=42)
+    with open(args.test_data_path, 'rb') as f:
+        test_data = pickle.load(f)
+
+    test_data, val_data = train_test_split(test_data, test_size=args.val_ratio, random_state=args.seed)
+
+    # Create datasets and data loaders
     train_dataset = FireDataset(train_data)
     val_dataset = FireDataset(val_data)
     test_dataset = FireDataset(test_data)
 
-    train_dataloader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=8)
-    val_dataloader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=8)
-    test_dataloader = DataLoader(test_dataset, batch_size=32, shuffle=False, num_workers=8)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
+    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
 
-    input_dim = 3
-    model_dim = 64
-    num_classes = 1
-    num_heads = 8
-    num_layers = 4
-    num_workers = 8
-    lr = 1e-6
-    warmup = 500
-    max_iters = 100000000
-    dropout = 0.2
-    input_dropout = 0.2
-    max_seq_length = 100
+    # Initialize model
+    model = TransformerPredictor(
+        input_dim=args.input_dim,
+        model_dim=args.model_dim,
+        num_classes=args.num_classes,
+        num_heads=args.num_heads,
+        num_layers=args.num_layers,
+        lr=args.lr,
+        warmup=args.warmup,
+        max_iters=args.max_iters,
+        dropout=args.dropout,
+        input_dropout=args.input_dropout,
+        max_seq_length=args.max_seq_length,
+    )
 
-    model = TransformerPredictor(input_dim, model_dim, num_classes, num_heads,
-                                 num_layers, lr, warmup, max_iters,
-                                 dropout, input_dropout, max_seq_length)
+    # Train and evaluate the model
+    trainer = pl.Trainer(
+        max_epochs=args.epochs,
+        gpus=args.gpus,
+        progress_bar_refresh_rate=args.progress_bar_refresh_rate,
+        gradient_clip_val=args.gradient_clip_val
+    )
+    trainer.fit(model, train_loader, val_loader)
+    trainer.test(model, test_loader)
 
-    trainer = pl.Trainer(max_epochs=1, gradient_clip_val=0.5)
-    trainer.fit(model, train_dataloader)
-    trainer.test(model, test_dataloader)
-    # torch.save(model.state_dict(), 'trained_model.pth')
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--test_ratio", type=float, default=0.2, help="Test set ratio")
+    parser.add_argument("--val_ratio", type=float, default=0.1, help="Validation set ratio")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
+    parser.add_argument("--input_dim", type=int, default=3, help="Input dimension")
+    parser.add_argument("--model_dim", type=int, default=512, help="Model dimension")
+    parser.add_argument("--num_classes", type=int, default=1, help="Number of output classes")
+    parser.add_argument("--num_heads", type=int, default=8, help="Number of attention heads")
+    parser.add_argument("--num_layers", type=int, default=6, help="Number of transformer layers")
+    parser.add_argument("--lr", type=float, default=0.0001, help="Learning rate")
+    parser.add_argument("--warmup", type=int, default=4000, help="Number of warmup steps")
+    parser.add_argument("--max_iters", type=int, default=100000, help="Maximum number of iterations")
+    parser.add_argument("--dropout", type=float, default=0.1, help="Dropout rate")
+    parser.add_argument("--input_dropout", type=float, default=0.1, help="Input dropout rate")
+    parser.add_argument("--max_seq_length", type=int, default=1024, help="Maximum sequence length")
+    parser.add_argument("--batch_size", type=int, default=64, help="Batch size")
+    parser.add_argument("--epochs", type=int, default=10, help="Number of epochs")
+    parser.add_argument("--gpus", type=int, default=1, help="Number of GPUs to use")
+    parser.add_argument("--progress_bar_refresh_rate", type=int, default=20, help="Progress bar refresh rate")
+    parser.add_argument("--gradient_clip_val", type=float, default=1.0, help="Gradient clipping value")
+    parser.add_argument("--save_model_path", type=str, default="trained_model.pth", help="Path to save the trained model")
+    parser.add_argument("--train_data_path", type=str, default="city_dict_19_20.pkl", help="Path to the train data file")
+    parser.add_argument("--test_data_path", type=str, default="test_dict.pkl", help="Path to the test data file")
+    args = parser.parse_args()
+
+main(args)
