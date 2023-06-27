@@ -14,25 +14,34 @@ from torch.utils.data import DataLoader, Dataset
 # Dataset
 # -----------------------------------------------------------------------------
 
+from torch.utils.data import Dataset
+import numpy as np
+import torch
+import pandas as pd
+
 class FireDataset(Dataset):
     def __init__(self, data):
-        self.data = self.replace_nan_with_median(data)
+        self.data = self.replace_nan_with_median_dict(data)
 
-    def replace_nan_with_median(self, data):
-        for city_id, city_data in data:
-            city_data[0][['tmax', 'tmin', 'prcp']] = city_data[0][['tmax', 'tmin', 'prcp']].apply(lambda x: x.fillna(x.median()), axis=0)
-        return data
+    def replace_nan_with_median_dict(self, data_dict):
+        for city_id, city_df in data_dict.items():
+            data_dict[0][city_id] = city_df.fillna(city_df.median())
+        return list(data_dict.values())
 
     def __len__(self):
-        return sum([len(city_data[1][0]) for city_data in self.data])
+        return sum([len(df) for df in self.data])
 
     def __getitem__(self, idx):
-        for city_id, city_data in self.data:
-            if idx < len(city_data[0]):
-                features = city_data[0].iloc[idx][['tmax', 'tmin', 'prcp']].values.astype(np.float32)
-                label = np.array(city_data[0].iloc[idx]['Fire'], dtype=np.int32)
-                return torch.tensor(features, dtype=torch.float32), torch.tensor(label, dtype=torch.float)
-            idx -= len(city_data[0])
+        for df in self.data:
+            if idx < len(df):
+                features = df.iloc[idx][['tmax', 'tmin', 'prcp']].values.astype(np.float32)
+                label = df.iloc[idx].get('Fire')
+                if label is not None:
+                    label = np.array(label, dtype=np.int64)
+                    return torch.tensor(features, dtype=torch.float32), torch.tensor(label, dtype=torch.long)
+                else:
+                    return torch.tensor(features, dtype=torch.float32)
+            idx -= len(df)
         raise IndexError("Index out of range")
 
 # -----------------------------------------------------------------------------
@@ -138,11 +147,11 @@ class TransformerPredictor(pl.LightningModule):
         avg_loss = torch.stack(self.val_loss).mean()
         self.log('val_loss', avg_loss, prog_bar=True)
 
-    def train_dataloader(self):
-        return DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=8)
+    def train_dataloader(self, train_dataset):
+        return DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=args.num_workers)
 
-    def val_dataloader(self):
-        return DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=8)
+    def val_dataloader(self, val_dataset):
+        return DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=args.num_workers)
 
     def test_step(self, batch, batch_idx):
         x, y = batch
@@ -174,52 +183,8 @@ class TransformerPredictor(pl.LightningModule):
 # -----------------------------------------------------------------------------
 
 
-def main(args):
-    # Load and preprocess data
-    with open(args.train_data_path, 'rb') as f:
-        train_data = pickle.load(f)
+def main():
 
-    with open(args.test_data_path, 'rb') as f:
-        test_data = pickle.load(f)
-
-    test_data, val_data = train_test_split(test_data, test_size=args.val_ratio, random_state=args.seed)
-
-    # Create datasets and data loaders
-    train_dataset = FireDataset(train_data)
-    val_dataset = FireDataset(val_data)
-    test_dataset = FireDataset(test_data)
-
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
-
-    # Initialize model
-    model = TransformerPredictor(
-        input_dim=args.input_dim,
-        model_dim=args.model_dim,
-        num_classes=args.num_classes,
-        num_heads=args.num_heads,
-        num_layers=args.num_layers,
-        lr=args.lr,
-        warmup=args.warmup,
-        max_iters=args.max_iters,
-        dropout=args.dropout,
-        input_dropout=args.input_dropout,
-        max_seq_length=args.max_seq_length,
-    )
-
-    # Train and evaluate the model
-    trainer = pl.Trainer(
-        max_epochs=args.epochs,
-        gpus=args.gpus,
-        progress_bar_refresh_rate=args.progress_bar_refresh_rate,
-        gradient_clip_val=args.gradient_clip_val
-    )
-    trainer.fit(model, train_loader, val_loader)
-    trainer.test(model, test_loader)
-
-
-if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--test_ratio", type=float, default=0.2, help="Test set ratio")
     parser.add_argument("--val_ratio", type=float, default=0.1, help="Validation set ratio")
@@ -237,7 +202,8 @@ if __name__ == "__main__":
     parser.add_argument("--max_seq_length", type=int, default=1024, help="Maximum sequence length")
     parser.add_argument("--batch_size", type=int, default=64, help="Batch size")
     parser.add_argument("--epochs", type=int, default=10, help="Number of epochs")
-    parser.add_argument("--gpus", type=int, default=1, help="Number of GPUs to use")
+    parser.add_argument("--num_workers", type=int, default=4, help="Number of workers")
+    # parser.add_argument("--gpus", type=int, default=1, help="Number of GPUs to use")
     parser.add_argument("--progress_bar_refresh_rate", type=int, default=20, help="Progress bar refresh rate")
     parser.add_argument("--gradient_clip_val", type=float, default=1.0, help="Gradient clipping value")
     parser.add_argument("--save_model_path", type=str, default="trained_model.pth", help="Path to save the trained model")
@@ -245,4 +211,61 @@ if __name__ == "__main__":
     parser.add_argument("--test_data_path", type=str, default="test_dict.pkl", help="Path to the test data file")
     args = parser.parse_args()
 
-main(args)
+    # Load and preprocess data
+    with open(args.train_data_path, 'rb') as f:
+        train_data = pickle.load(f)
+
+    with open(args.test_data_path, 'rb') as f:
+        test_data = pickle.load(f)
+
+    def fill_nan(dict):
+        for city_id, city_data in dict.items():
+            city_data[0].fillna(city_data[0].mean(), inplace=True)
+        return dict
+
+    train_data = fill_nan(train_data)
+    test_data = fill_nan(test_data)
+
+    train_list = [(city_id, city_data) for city_id, city_data in train_data.items()]
+    test_list = [(city_id, city_data) for city_id, city_data in test_data.items()]
+
+    train_data = train_list
+    test_data, val_data = train_test_split(test_list, test_size=args.val_ratio, random_state=args.seed)
+
+    # Create datasets and data loaders
+    train_dataset = FireDataset(train_data)
+    val_dataset = FireDataset(val_data)
+    test_dataset = FireDataset(test_data)
+
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
+    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
+    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
+
+    # Initialize model
+    model = TransformerPredictor(
+        input_dim=args.input_dim,
+        model_dim=args.model_dim,
+        num_classes=args.num_classes,
+        num_heads=args.num_heads,
+        num_layers=args.num_layers,
+        lr=args.lr,
+        warmup=args.warmup,
+        max_iters=args.max_iters,
+        dropout=args.dropout,
+        input_dropout=args.input_dropout,
+        max_seq_length=args.max_seq_length
+    )
+
+    # Train and evaluate the model
+    trainer = pl.Trainer(
+        max_epochs=args.epochs,
+        gradient_clip_val=args.gradient_clip_val
+    )
+    trainer.fit(model, train_loader, val_loader)
+    trainer.test(model, test_loader)
+
+    torch.save(model.state_dict(), args.save_model_path)
+
+
+if __name__ == "__main__":
+    main()
