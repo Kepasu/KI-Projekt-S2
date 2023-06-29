@@ -9,6 +9,7 @@ import seaborn as sns
 import geopandas as gpd
 from shapely.geometry import Point
 import arrow
+from matplotlib.widgets import CheckButtons
 plt.style.use('seaborn-white')
 
 def haversine(lat1, lon1, lat2, lon2):
@@ -100,7 +101,7 @@ geometry = [Point(xy) for xy in zip(city_info_df['Lon'], city_info_df['Lat'])]
 city_locations = gpd.GeoDataFrame(city_info_df, geometry=geometry)
 
 # Plot point locations
-fig, ax = plt.subplots(figsize=(10, 7))
+fig, ax = plt.subplots(figsize=(12, 7))
 
 worldBound.plot(figsize=(10, 5), color='k', ax=ax)
 
@@ -122,19 +123,44 @@ ax.set_ylim(y1, y2)
 ax.indicate_inset_zoom(ax, edgecolor="black")
 
 # Contour Plot --> make the fire data appear as a colored third dimension
-x = np.arange(-126, -60, 1)
-y = np.arange(23, 55, 0.9)
+x = lat
+y = lon
 X, Y = np.meshgrid(x, y)
 
 # Calculate fire probability (example data)
-fire_prob = np.random.rand(len(y), len(x))
+Z = Prob
 
 # Plot contour lines
-contour = ax.contour(X, Y, fire_prob, cmap='hot', levels=10)
+
+plt.contourf(X, Y, Z, cmap='hot', alpha=0.2, levels=50)
+#contour_visible = False  # Initially hide the contour plot
 
 # Add colorbar
-cbar = plt.colorbar(contour, ax=ax, orientation='vertical')
+cbar = plt.colorbar(ax=ax, orientation='vertical')
 cbar.set_label('Fire Probability')
+
+# Create a check button in the top left corner
+#rax = plt.axes([0.02, 0.92, 0.1, 0.1])
+#heck_button = CheckButtons(rax, ['Toggle Contour'], [False])
+
+# Function to handle the check button toggling
+"""def toggle_contour(label):
+    global contour_visible
+    contour_visible = not contour_visible
+    
+    if contour_visible:
+        contour.collections.clear()  # Clear the previous contour lines
+        contour = ax.contour(lon, lat, fire_prob, levels=[0.1, 0.3, 0.5, 0.7, 0.9], colors='red', linewidths=1.5, alpha=0.5)
+    else:
+        contour.collections.clear()  # Clear the contour lines
+    
+    plt.draw()
+def update_visibility(label):
+    if label == 'Contour Lines':
+        contour.set_alpha(1.0 if check_button.get_status()[0] else 0.0)
+    plt.draw()
+
+check_button.on_clicked(update_visibility)"""
 
 def onclick(event):
     print('%s click: button=%d, xdata=%f, ydata=%f' %
