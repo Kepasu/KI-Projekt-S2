@@ -9,6 +9,7 @@ import seaborn as sns
 import geopandas as gpd
 from shapely.geometry import Point
 import arrow
+plt.style.use('seaborn-white')
 
 def haversine(lat1, lon1, lat2, lon2):
     R = 6371  # Radius of the earth in kilometers
@@ -71,9 +72,10 @@ def checkForFire(lat, lon, date, fire_df):
     else:
         return False
 
+
 # Load weather and fire dataframes
 weather_df = pd.read_csv('/Users/emilychristians/desktop/ki_projekt/data/weather/city_info.csv')
-fire_df = combine_fire_df(2015, 2022)
+fire_df = combine_fire_df(2001, 2022)
 
 # Set the path to the 'city_info.csv' file
 city_info_path = '/Users/emilychristians/desktop/ki_projekt/data/weather/city_info.csv'
@@ -103,11 +105,11 @@ fig, ax = plt.subplots(figsize=(10, 7))
 worldBound.plot(figsize=(10, 5), color='k', ax=ax)
 
 # Add city locations
-city_locations.plot(ax=ax, color='red', marker='o', markersize=50)
+city_locations.plot(ax=ax, color='mediumturquoise', marker='.', markersize=50)
 
 # Setup x y axes with labels and add graticules
 ax.set(xlabel="Longitude (Degrees)", ylabel="Latitude (Degrees)",
-       title="Global Map - Geographic Coordinate System - WGS84 Datum\n Units: Degrees - Latitude / Longitude")
+       title="World Map - PROBABILITY OF FIRE - WGS84 Datum\n Units: Degrees - Latitude / Longitude")
 ax.set_axisbelow(True)
 ax.yaxis.grid(color='gray', linestyle='dashed')
 ax.xaxis.grid(color='gray', linestyle='dashed')
@@ -119,6 +121,21 @@ ax.set_ylim(y1, y2)
 
 ax.indicate_inset_zoom(ax, edgecolor="black")
 
+# Contour Plot --> make the fire data appear as a colored third dimension
+x = np.arange(-126, -60, 1)
+y = np.arange(23, 55, 0.9)
+X, Y = np.meshgrid(x, y)
+
+# Calculate fire probability (example data)
+fire_prob = np.random.rand(len(y), len(x))
+
+# Plot contour lines
+contour = ax.contour(X, Y, fire_prob, cmap='hot', levels=10)
+
+# Add colorbar
+cbar = plt.colorbar(contour, ax=ax, orientation='vertical')
+cbar.set_label('Fire Probability')
+
 def onclick(event):
     print('%s click: button=%d, xdata=%f, ydata=%f' %
           ('double' if event.dblclick else 'single', event.button,
@@ -126,14 +143,11 @@ def onclick(event):
     checkForFire(event.ydata, event.xdata, '2023-05-25', fire_df)
     print(checkForFire)
 
-x = np.arange(-120, 65, 0.05)
-
-
 cid = fig.canvas.mpl_connect('button_press_event', onclick)
 
 # Add title and axes labels
-ax.set(title="World Map - Geographic Coordinate Reference System (long/lat degrees)",
+ax.set(title="US Map - Probability of Fire (0-1)",
        xlabel="X Coordinates (latitude)",
-       ylabel="Y Coordinates (longitude)");
+       ylabel="Y Coordinates (longitude)")
 
 plt.show()
